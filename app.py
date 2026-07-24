@@ -10,6 +10,14 @@ from sklearn.metrics.pairwise import cosine_similarity
 from skills_db import SKILLS_DB
 from job_roles import JOB_ROLES
 
+import io as io_module
+from datetime import datetime
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+
 st.set_page_config(page_title="AI Resume Analyzer", page_icon="📄", layout="wide")
 
 st.markdown("""
@@ -191,6 +199,50 @@ def suggest_improvements(raw_text, clean_text, found_skills):
 
     return suggestions
 
+def build_pdf_report(resume_score, found_skills, role_matches, suggestions, jd_score=None):
+    buffer = io_module.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1.5 * cm, bottomMargin=1.5 * cm)
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("TitleStyle", parent=styles["Title"], textColor=colors.HexColor("#4F46E5"))
+    heading_style = ParagraphStyle("Heading", parent=styles["Heading2"], textColor=colors.HexColor("#1E293B"))
+    body_style = styles["BodyText"]
+
+    elements = [
+        Paragraph("AI Resume Analyzer — Report", title_style),
+        Paragraph(f"Generated on {datetime.now().strftime('%d %b %Y, %H:%M')}", body_style),
+        Spacer(1, 0.5 * cm),
+        Paragraph(f"Overall Resume Score: {resume_score} / 100", heading_style),
+        Spacer(1, 0.4 * cm),
+    ]
+    if jd_score is not None:
+        elements.append(Paragraph("Job Description Match", heading_style))
+        elements.append(Paragraph(f"Match Score: {jd_score}%", body_style))
+        elements.append(Spacer(1, 0.5 * cm))
+
+    elements.append(Paragraph("Detected Skills", heading_style))
+    for category, skills in found_skills.items():
+        elements.append(Paragraph(f"<b>{category}:</b> {', '.join(skills)}", body_style))
+    elements.append(Spacer(1, 0.5 * cm))
+
+    elements.append(Paragraph("Top Job Role Matches", heading_style))
+    role_data = [["Role", "Match %"]] + [[m["role"], f"{m['score']}%"] for m in role_matches]
+    role_table = Table(role_data, colWidths=[10 * cm, 4 * cm])
+    role_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4F46E5")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+    ]))
+    elements += [role_table, Spacer(1, 0.5 * cm)]
+
+    elements.append(Paragraph("Suggested Improvements", heading_style))
+    for s in suggestions:
+        elements.append(Paragraph(f"• {s}", body_style))
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer.getvalue()
+
 
 if uploaded_file is not None:
     st.success(f"File uploaded: {uploaded_file.name}")
@@ -233,6 +285,8 @@ if uploaded_file is not None:
             st.markdown(f"**✅ Matched Skills:** {', '.join(match['matched_skills']) or 'None'}")
             st.markdown(f"**❌ Missing Skills:** {', '.join(match['missing_skills']) or 'None'}")
 
+    jd_score = None
+
     st.divider()
     st.subheader("📋 Match Against a Specific Job Description")
     st.write("Paste a job description below to see how well your resume matches it.")
@@ -251,6 +305,16 @@ if uploaded_file is not None:
     st.subheader("💡 Suggestions to Improve Your Resume")
     for s in suggestions:
         st.markdown(f"- {s}")
+
+    st.divider()
+    st.subheader("📥 Download Your Report")
+    pdf_bytes = build_pdf_report(resume_score, found_skills, role_matches, suggestions, jd_score)
+    st.download_button(
+        label="Download PDF Report",
+        data=pdf_bytes,
+        file_name="resume_analysis_report.pdf",
+        mime="application/pdf"
+    )
 
 else:
     st.info("👆 Please upload a resume file.")
