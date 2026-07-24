@@ -10,6 +10,34 @@ from sklearn.metrics.pairwise import cosine_similarity
 from skills_db import SKILLS_DB
 from job_roles import JOB_ROLES
 
+st.set_page_config(page_title="AI Resume Analyzer", page_icon="📄", layout="wide")
+
+st.markdown("""
+<style>
+#MainMenu, footer, header {visibility: hidden;}
+.hero {
+    padding: 2rem;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+    color: white;
+    margin-bottom: 1.5rem;
+}
+.hero h1 { margin: 0; font-size: 2.2rem; }
+.hero p { margin: 0.4rem 0 0 0; opacity: 0.9; font-size: 1.05rem; }
+.skill-badge {
+    display: inline-block;
+    background: #EEF2FF;
+    color: #4338CA;
+    border-radius: 999px;
+    padding: 5px 14px;
+    margin: 3px;
+    font-size: 0.85rem;
+    border: 1px solid #C7D2FE;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
 SECTION_KEYWORDS = {
     "Experience": ["experience", "work history", "employment"],
     "Education": ["education", "academic", "qualification"],
@@ -24,8 +52,12 @@ ACTION_VERBS = [
     "created", "improved", "optimized", "automated", "analyzed", "launched"
 ]
 
-st.title("📄 AI Resume Analyzer")
-st.write("Upload your resume to get started.")
+st.markdown("""
+<div class="hero">
+    <h1>📄 AI Resume Analyzer</h1>
+    <p>NLP-powered skill extraction, ML-based job matching, and resume improvement suggestions.</p>
+</div>
+""", unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader("Upload your resume", type=["pdf", "docx", "txt"])
 
@@ -101,6 +133,26 @@ def match_job_roles(clean_resume_text, top_n=5):
     results.sort(key=lambda x: x["score"], reverse=True)
     return results[:top_n]
 
+def compute_resume_score(raw_text, clean_text, found_skills, top_role_score):
+    sections_present = sum(
+        1 for keywords in SECTION_KEYWORDS.values() if any(kw in clean_text for kw in keywords)
+    )
+    section_score = (sections_present / len(SECTION_KEYWORDS)) * 25
+
+    total_skills = sum(len(v) for v in found_skills.values())
+    skill_score = min(total_skills / 15, 1.0) * 25
+
+    verbs_found = sum(1 for v in ACTION_VERBS if v in clean_text)
+    verb_score = min(verbs_found / 6, 1.0) * 12.5
+    has_numbers = bool(re.search(r"\d+%|\$\d+|\b\d+\b", raw_text))
+    number_score = 12.5 if has_numbers else 0
+    impact_score = verb_score + number_score
+
+    fit_score = (top_role_score / 100) * 25
+
+    total = round(section_score + skill_score + impact_score + fit_score, 1)
+    return total
+
 def suggest_improvements(raw_text, clean_text, found_skills):
     suggestions = []
 
@@ -140,10 +192,23 @@ if uploaded_file is not None:
     role_matches = match_job_roles(processed_text)
     suggestions = suggest_improvements(raw_text, processed_text, found_skills)
 
+    total_skills_count = sum(len(v) for v in found_skills.values())
+    top_role = role_matches[0]
+    resume_score = compute_resume_score(raw_text, processed_text, found_skills, top_role["score"])
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Overall Resume Score", f"{resume_score}/100")
+    col2.metric("Skills Detected", total_skills_count)
+    col3.metric("Top Job Match", top_role["role"], f"{top_role['score']}%")
+
+    st.divider()
+
     st.subheader("🛠️ Skills Detected in Your Resume")
     if found_skills:
         for category, skills in found_skills.items():
-            st.markdown(f"**{category}:** {', '.join(skills)}")
+            badges = "".join(f'<span class="skill-badge">{s}</span>' for s in skills)
+            st.markdown(f"**{category}**", unsafe_allow_html=True)
+            st.markdown(badges, unsafe_allow_html=True)
     else:
         st.warning("No known skills detected. Try a resume with a clear Skills section.")
 
