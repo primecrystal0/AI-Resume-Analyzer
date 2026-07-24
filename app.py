@@ -10,6 +10,20 @@ from sklearn.metrics.pairwise import cosine_similarity
 from skills_db import SKILLS_DB
 from job_roles import JOB_ROLES
 
+SECTION_KEYWORDS = {
+    "Experience": ["experience", "work history", "employment"],
+    "Education": ["education", "academic", "qualification"],
+    "Projects": ["project"],
+    "Skills": ["skills", "technical skills"],
+    "Contact Info": ["email", "phone", "linkedin", "@"],
+    "Summary/Objective": ["summary", "objective", "profile"],
+}
+
+ACTION_VERBS = [
+    "developed", "built", "designed", "implemented", "led", "managed",
+    "created", "improved", "optimized", "automated", "analyzed", "launched"
+]
+
 st.title("📄 AI Resume Analyzer")
 st.write("Upload your resume to get started.")
 
@@ -87,6 +101,35 @@ def match_job_roles(clean_resume_text, top_n=5):
     results.sort(key=lambda x: x["score"], reverse=True)
     return results[:top_n]
 
+def suggest_improvements(raw_text, clean_text, found_skills):
+    suggestions = []
+
+    for section, keywords in SECTION_KEYWORDS.items():
+        if not any(kw in clean_text for kw in keywords):
+            suggestions.append(f"Consider adding a clear **{section}** section — it wasn't detected.")
+
+    word_count = len(raw_text.split())
+    if word_count < 150:
+        suggestions.append("Your resume looks quite short. Add more detail on projects and impact.")
+    elif word_count > 1200:
+        suggestions.append("Your resume is quite long — consider trimming to 1-2 pages.")
+
+    if not re.search(r"\d+%|\$\d+|\b\d+\b", raw_text):
+        suggestions.append("Add quantifiable achievements (e.g. 'improved accuracy by 15%').")
+
+    verbs_found = [v for v in ACTION_VERBS if v in clean_text]
+    if len(verbs_found) < 3:
+        suggestions.append("Use more strong action verbs (developed, optimized, led, automated).")
+
+    total_skills = sum(len(v) for v in found_skills.values())
+    if total_skills < 5:
+        suggestions.append("Very few technical skills detected — make sure your Skills section is specific.")
+
+    if not suggestions:
+        suggestions.append("Great job! Your resume covers sections, skills, and impact well.")
+
+    return suggestions
+
 
 if uploaded_file is not None:
     st.success(f"File uploaded: {uploaded_file.name}")
@@ -95,6 +138,7 @@ if uploaded_file is not None:
     processed_text = clean_text(raw_text)
     found_skills = extract_skills(processed_text)
     role_matches = match_job_roles(processed_text)
+    suggestions = suggest_improvements(raw_text, processed_text, found_skills)
 
     st.subheader("🛠️ Skills Detected in Your Resume")
     if found_skills:
@@ -114,6 +158,10 @@ if uploaded_file is not None:
         with st.expander(f"{match['role']} — {match['score']}% match"):
             st.markdown(f"**✅ Matched Skills:** {', '.join(match['matched_skills']) or 'None'}")
             st.markdown(f"**❌ Missing Skills:** {', '.join(match['missing_skills']) or 'None'}")
+
+    st.subheader("💡 Suggestions to Improve Your Resume")
+    for s in suggestions:
+        st.markdown(f"- {s}")
 
 else:
     st.info("👆 Please upload a resume file.")
