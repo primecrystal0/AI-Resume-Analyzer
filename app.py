@@ -133,6 +133,15 @@ def match_job_roles(clean_resume_text, top_n=5):
     results.sort(key=lambda x: x["score"], reverse=True)
     return results[:top_n]
 
+def match_against_job_description(clean_resume_text, job_description):
+    jd_clean = clean_text(job_description)
+
+    vectorizer = TfidfVectorizer(stop_words="english")
+    tfidf_matrix = vectorizer.fit_transform([clean_resume_text, jd_clean])
+    similarity = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
+
+    return round(similarity * 100, 1)
+
 def compute_resume_score(raw_text, clean_text, found_skills, top_role_score):
     sections_present = sum(
         1 for keywords in SECTION_KEYWORDS.values() if any(kw in clean_text for kw in keywords)
@@ -223,6 +232,21 @@ if uploaded_file is not None:
         with st.expander(f"{match['role']} — {match['score']}% match"):
             st.markdown(f"**✅ Matched Skills:** {', '.join(match['matched_skills']) or 'None'}")
             st.markdown(f"**❌ Missing Skills:** {', '.join(match['missing_skills']) or 'None'}")
+
+    st.divider()
+    st.subheader("📋 Match Against a Specific Job Description")
+    st.write("Paste a job description below to see how well your resume matches it.")
+    job_description = st.text_area("Paste job description here", height=200)
+
+    if job_description.strip():
+        jd_score = match_against_job_description(processed_text, job_description)
+        st.metric("Match with this Job Description", f"{jd_score}%")
+        if jd_score >= 60:
+            st.success("Strong match! Your resume aligns well with this job description.")
+        elif jd_score >= 35:
+            st.warning("Moderate match. Consider tailoring your resume to include more relevant keywords.")
+        else:
+            st.error("Low match. This resume may need significant tailoring for this role.")
 
     st.subheader("💡 Suggestions to Improve Your Resume")
     for s in suggestions:
